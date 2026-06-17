@@ -1,0 +1,18 @@
+# Variables de entorno — contienen credenciales sensibles
+.env
+
+# Credenciales cloud
+credentials/
+
+# Logs de Airflow
+logs/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
