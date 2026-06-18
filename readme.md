@@ -104,6 +104,7 @@ airflow-2.6/
 ├── .env                     # Environment variables (DO NOT version)
 ├── .env.example             # Variables template (DO version)
 ├── .gitignore               # Excludes .env and credentials/
+├── fix-env.sh               # Fixes POSTGRES_HOST / AIRFLOW_UID / permissions (see Troubleshooting)
 ├── Dockerfile               # Custom Airflow image with providers
 ├── docker-compose.yml       # Services: webserver, scheduler, triggerer
 ├── readme.md                # Documentation (English, default)
@@ -146,19 +147,26 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### 2. Build the image and start the services
+### 2. (Optional) Run the fix-env.sh helper
+If this is your first run, `./logs` and `./credentials` don't exist yet and may end up owned by `root` once Docker creates them, and `POSTGRES_HOST` may not match your setup. Run:
+```bash
+./fix-env.sh
+```
+It sets `AIRFLOW_UID` to your host UID, points `POSTGRES_HOST` to `host.docker.internal` if it was left as `postgres` (there is no `postgres` service in this compose — Postgres is external), and fixes ownership of `./logs` and `./credentials`. Safe to re-run any time. See [Troubleshooting](#troubleshooting) for the errors it fixes.
+
+### 3. Build the image and start the services
 ```bash
 docker compose up --build -d
 ```
 The `airflow-init` service runs first, executes the DB migrations and creates the admin user. The other services wait for it to finish.
 
-### 3. Verify the services are healthy
+### 4. Verify the services are healthy
 ```bash
 docker compose ps
 ```
 All services should show `healthy` or `running` status.
 
-### 4. Access the web interface
+### 5. Access the web interface
 Open in the browser: **http://localhost:8090**
 
 - **User**: `admin`
@@ -177,6 +185,19 @@ Open in the browser: **http://localhost:8090**
 | Restart a service | `docker compose restart scheduler` |
 
 > **Note:** `docker compose down` does **not** remove the DAGs or the logs because they are mounted as local volumes. PostgreSQL data is not affected either since it lives in the external container.
+
+## Troubleshooting
+
+### `could not translate host name "postgres" to address`
+`airflow-init` (and then `webserver`/`scheduler`/`triggerer`) can't reach the database. This compose has **no `postgres` service** — Postgres is external — so `POSTGRES_HOST=postgres` in `.env` doesn't resolve. Set `POSTGRES_HOST=host.docker.internal` instead (already wired via `extra_hosts` in `docker-compose.yml`). Note `airflow-init`'s script has `|| true`, so it can exit `0` even when this fails silently — always check `docker compose logs airflow-init` if the other services never become healthy.
+
+### Permission denied writing to `./logs`
+`./logs` and `./credentials` are in `.gitignore`, so they don't exist when you first clone the repo. On the first `docker compose up`, Docker creates them on the host as `root:root` (the daemon creates missing bind-mount sources before the container's `user:` applies). Since the services run as `${AIRFLOW_UID}:0`, that user can't write there. Fix ownership with `sudo chown -R $(id -u):0 logs credentials`, or just run `./fix-env.sh`.
+
+### Use `./fix-env.sh`
+The [`fix-env.sh`](./fix-env.sh) script automates both fixes above (and aligns `AIRFLOW_UID` with your host user). Re-run it any time with `./fix-env.sh`.
+
+> ⚠️ Run it as your normal user, **not** `sudo ./fix-env.sh` — it asks for sudo itself only for the `chown` step. Running the whole script as root makes it pick up UID `0` instead of yours, leaving `AIRFLOW_UID=0` in `.env` and `./logs`/`./credentials` still owned by `root`.
 
 ## Considerations
 - The base image is `apache/airflow:2.6.3-python3.11` with the three providers installed.

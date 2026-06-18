@@ -104,6 +104,7 @@ airflow-2.6/
 ├── .env                     # Variables de entorno (NO versionar)
 ├── .env.example             # Plantilla de variables (SÍ versionar)
 ├── .gitignore               # Excluye .env y credentials/
+├── fix-env.sh               # Corrige POSTGRES_HOST / AIRFLOW_UID / permisos (ver Solución de problemas)
 ├── Dockerfile               # Imagen custom de Airflow con providers
 ├── docker-compose.yml       # Servicios: webserver, scheduler, triggerer
 ├── readme.md                # Documentación (inglés, por defecto)
@@ -146,19 +147,26 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### 2. Construir la imagen y levantar los servicios
+### 2. (Opcional) Ejecutar el script fix-env.sh
+Si es tu primera vez, `./logs` y `./credentials` aún no existen y pueden quedar como `root` al crearlos Docker, y `POSTGRES_HOST` puede no coincidir con tu entorno. Ejecuta:
+```bash
+./fix-env.sh
+```
+Ajusta `AIRFLOW_UID` a tu UID del host, cambia `POSTGRES_HOST` a `host.docker.internal` si quedó como `postgres` (no existe un servicio `postgres` en este compose — Postgres es externo), y corrige los permisos de `./logs` y `./credentials`. Se puede ejecutar varias veces sin problema. Ver [Solución de problemas](#solución-de-problemas) para más detalle de los errores que soluciona.
+
+### 3. Construir la imagen y levantar los servicios
 ```bash
 docker compose up --build -d
 ```
 El servicio `airflow-init` correrá primero, ejecutará las migraciones de BD y creará el usuario admin. Los demás servicios esperarán a que termine.
 
-### 3. Verificar que los servicios estén saludables
+### 4. Verificar que los servicios estén saludables
 ```bash
 docker compose ps
 ```
 Todos los servicios deben mostrar estado `healthy` o `running`.
 
-### 4. Acceder a la interfaz web
+### 5. Acceder a la interfaz web
 Abrir en el navegador: **http://localhost:8090**
 
 - **Usuario**: `admin`
@@ -177,6 +185,19 @@ Abrir en el navegador: **http://localhost:8090**
 | Reiniciar un servicio | `docker compose restart scheduler` |
 
 > **Nota:** `docker compose down` **no** elimina los DAGs ni los logs porque están montados como volúmenes locales. Los datos de PostgreSQL tampoco se ven afectados ya que viven en el contenedor externo.
+
+## Solución de problemas
+
+### `could not translate host name "postgres" to address`
+`airflow-init` (y luego `webserver`/`scheduler`/`triggerer`) no pueden alcanzar la base de datos. Este compose **no tiene servicio `postgres`** — Postgres es externo — así que `POSTGRES_HOST=postgres` en `.env` no resuelve. Usa `POSTGRES_HOST=host.docker.internal` (ya configurado vía `extra_hosts` en `docker-compose.yml`). Ojo: el script de `airflow-init` tiene `|| true`, así que puede salir con código `0` aunque esto falle silenciosamente — revisa siempre `docker compose logs airflow-init` si los demás servicios nunca quedan `healthy`.
+
+### Permission denied al escribir en `./logs`
+`./logs` y `./credentials` están en `.gitignore`, así que no existen al clonar el repo. En el primer `docker compose up`, Docker los crea en el host como `root:root` (el daemon crea las carpetas de los bind-mounts que faltan antes de que el contenedor aplique su `user:`). Como los servicios corren como `${AIRFLOW_UID}:0`, ese usuario no puede escribir ahí. Corrige los permisos con `sudo chown -R $(id -u):0 logs credentials`, o simplemente ejecuta `./fix-env.sh`.
+
+### Usa `./fix-env.sh`
+El script [`fix-env.sh`](./fix-env.sh) automatiza ambas correcciones de arriba (y ajusta `AIRFLOW_UID` a tu usuario del host). Se puede volver a ejecutar en cualquier momento con `./fix-env.sh`.
+
+> ⚠️ Ejecútalo como tu usuario normal, **no** con `sudo ./fix-env.sh` — el script pide sudo él solo, únicamente para el paso de `chown`. Si corres todo el script como root, toma el UID `0` en vez del tuyo, dejando `AIRFLOW_UID=0` en `.env` y `./logs`/`./credentials` siguen siendo de `root`.
 
 ## Consideraciones
 - La imagen base es `apache/airflow:2.6.3-python3.11` con los tres providers instalados.
