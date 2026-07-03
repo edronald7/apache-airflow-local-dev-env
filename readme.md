@@ -2,6 +2,11 @@
 
 > 🌐 **Language:** You are reading the English version (default). La versión en español está disponible en [`readme_es.md`](./readme_es.md).
 
+![Apache Airflow Web GUI](airflow.png)
+
+---
+
+
 ## Goal
 Run Apache Airflow locally with Docker to develop and test DAGs before moving to production. The end goal is to build DAGs that run Dataflow processes on OCI and AWS.
 

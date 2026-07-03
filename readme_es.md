@@ -2,6 +2,11 @@
 
 > 🌐 **Idioma:** Estás leyendo la versión en español. The English version is available in [`readme.md`](./readme.md).
 
+![Apache Airflow Web GUI](airflow.png)
+
+---
+
+
 ## Necesidad
 Tener Apache Airflow corriendo localmente con Docker para desarrollar y probar DAGs antes de pasar a producción. El objetivo final es crear DAGs que ejecuten procesos Dataflow en OCI y AWS.
 
