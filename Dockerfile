@@ -2,6 +2,9 @@ FROM apache/airflow:2.6.3-python3.11
 
 USER root
 
+# La red corporativa solo permite salida por HTTPS: forzar los repos APT a https
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list
+
 # Dependencias del sistema necesarias para los providers (OCI SDK, etc.)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
