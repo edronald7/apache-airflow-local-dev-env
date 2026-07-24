@@ -131,6 +131,18 @@ The `dags/` folder ships with **several ready-to-use example DAGs** that cover r
 
 > 📚 See the full documentation for every example (task graphs, required Airflow variables/connections, patterns and scheduling) in [`dags/examples.md`](./dags/examples.md).
 
+## Companion project — Web DAG browser
+To view, upload and edit the files in `./dags` from the browser (no SSH or local editor required), you can use this companion repository, which starts a **File Browser** web UI with Docker and points it to this project's DAGs folder: [edronald7/apache-airflow-dag-browser-web-env](https://github.com/edronald7/apache-airflow-dag-browser-web-env).
+
+```bash
+git clone https://github.com/edronald7/apache-airflow-dag-browser-web-env.git
+cd apache-airflow-dag-browser-web-env
+cp .env.example .env   # set DAGS_DIR to this project's dags/ folder
+docker compose up -d
+```
+
+By default it is exposed on port **8085** (configurable via the `PORT` variable). Since it gives write access to code that Airflow executes, use a strong admin password.
+
 ## Usage — Start the environment
 
 ### Prerequisites
