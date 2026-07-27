@@ -29,6 +29,14 @@ This directory contains example DAGs that demonstrate different patterns and rea
 | `dag_nivel4_avanzado.py` | `nivel4_dynamic_task_mapping` | ⭐⭐⭐⭐ Advanced | Dynamic Task Mapping + TimeSensor + @task decorator |
 | `dag_nivel5_complejo.py` | `nivel5_pipeline_data_lake` | ⭐⭐⭐⭐⭐ Complex | E2E Data Lake pipeline — all advanced patterns |
 
+### Dataset DAGs — data-aware scheduling (Levels 1 → 3)
+
+| File | DAG IDs | Level | Description |
+|---|---|---|---|
+| `dag_dataset_nivel1_basico.py` | `dataset_n1_productor`, `dataset_n1_consumidor` | ⭐ Basic | Minimal pattern: producer with `outlets` + consumer with `schedule=[dataset]` |
+| `dag_dataset_nivel2_intermedio.py` | `dataset_n2_productor_ventas`, `dataset_n2_productor_clientes`, `dataset_n2_reporte_ventas`, `dataset_n2_join_ventas_clientes` | ⭐⭐⭐ Intermediate | Multiple datasets, fan-out and AND logic (`schedule=[ds1, ds2]`) |
+| `dag_dataset_nivel3_avanzado.py` | `dataset_n3_ingesta_raw`, `dataset_n3_transformacion`, `dataset_n3_analytics` | ⭐⭐⭐⭐⭐ Advanced | Chained raw → staging → analytics pipeline with a quality gate and event auditing |
+
 ---
 
 ## 1. OCI Dataflow Job (`dag_oci_dataflow.py`)
@@ -314,6 +322,42 @@ Three different operators in a straight line. Introduces XCom to share data and 
 
 ### Level 5 — Very Complex
 A real production pipeline with 6 stages (Control → Ingestion → Quality → Transform → Delivery → Audit). Combines all the previous patterns plus: SLA miss callback, retry with exponential backoff, 3-layer nested TaskGroups, multiple TriggerRules across different tasks, and global success/failure callbacks.
+
+---
+
+## Datasets — data-aware scheduling
+
+Available since Airflow 2.4. A **Dataset** is a logical URI representing a piece of data (a file, a table, etc.). Airflow never reads or validates that data: it only connects **producer** DAGs (tasks with `outlets=[...]`) to **consumer** DAGs (`schedule=[dataset]`). When the producing task finishes successfully, a `DatasetEvent` is recorded and consumers are triggered automatically — no cron and no sensors.
+
+```python
+from airflow.datasets import Dataset
+
+MY_DATASET = Dataset("file:///tmp/datasets_demo/ventas.csv")
+
+# Producer: any task can declare outlets
+PythonOperator(task_id="generate", python_callable=..., outlets=[MY_DATASET])
+
+# Consumer: the DAG uses `schedule` (not `schedule_interval`) with a list of Datasets
+with DAG(dag_id="consumer", schedule=[MY_DATASET], ...):
+    ...
+```
+
+The **Datasets** tab in the UI shows the cross-DAG dependency graph and the event history.
+
+### Dataset Level 1 — Basic (`dag_dataset_nivel1_basico.py`)
+A `@daily` producer writes `ventas.csv` and declares `outlets=[VENTAS_CSV]`; the consumer has no cron and runs every time the dataset is updated. This is the modern replacement for the `TriggerDagRunOperator` / `ExternalTaskSensor` pattern for chaining DAGs.
+
+### Dataset Level 2 — Intermediate (`dag_dataset_nivel2_intermedio.py`)
+Two independent producers (`@daily` and `@hourly`) update different datasets carrying `extra` metadata. Demonstrates **fan-out** (one dataset triggering multiple consumers) and **AND logic**: `schedule=[DS_VENTAS, DS_CLIENTES]` waits until *both* datasets have a pending update since the last run. In Airflow 2.6 the list is always AND (the `|` and `&` operators arrived in 2.9).
+
+### Dataset Level 3 — Advanced (`dag_dataset_nivel3_avanzado.py`)
+Multi-layer raw → staging → analytics pipeline where the middle DAG is both **consumer and producer**. A `ShortCircuitOperator` acts as a quality gate: if the raw data fails validation, the task holding the outlet never runs, the `DatasetEvent` is not emitted and the downstream layers do not trigger — bad data never propagates. It also shows `context["triggering_dataset_events"]` (which event triggered the run) and auditing of the `DatasetEvent` history by querying the metadata DB with `@provide_session`.
+
+### Limitations in Airflow 2.6
+- No OR conditions or combined expressions (`DatasetAny`/`DatasetAll` arrive in 2.9).
+- No time + dataset combined schedule on the same DAG (`DatasetOrTimeSchedule` arrives in 2.9).
+- No dataset updates via REST API (arrives in 2.9) and no `DatasetAlias` (2.10).
+- In Airflow 3.x, Datasets were renamed to **Assets** (`airflow.sdk.Asset`).
 
 ---
 
